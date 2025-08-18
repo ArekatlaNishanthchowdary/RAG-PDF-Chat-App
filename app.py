@@ -361,16 +361,19 @@ def main():
             st.info("👆 Upload a PDF document to start chatting!")
             return
         
-        # Chat interface
-        chat_container = st.container()
+        # Chat interface container with scrolling
+        chat_area = st.container()
+        # Reserve space for chat input at the bottom
+        input_container = st.container()
         
         # Display chat history
-        with chat_container:
+        with chat_area:
             for exchange in st.session_state.chat_history:
-                display_chat_interface(chat_container, exchange)
+                display_chat_interface(chat_area, exchange)
         
-        # Chat input
-        user_input = st.chat_input("Ask a question about your PDF...")
+        # Chat input at the bottom
+        with input_container:
+            user_input = st.chat_input("Ask a question about your PDF...")
         
         if user_input:
             # Add user message to chat
