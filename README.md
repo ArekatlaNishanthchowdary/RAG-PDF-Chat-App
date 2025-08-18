@@ -284,6 +284,4 @@ This project is open source. Please ensure you comply with the terms of service 
 
 ---
 
-**Built with ❤️ using Streamlit, Gemini AI, and modern RAG techniques**#   R A G - P D F - C h a t - A p p 
- 
- 
+**Built with ❤️ using Streamlit, Gemini AI, and modern RAG techniques**#
