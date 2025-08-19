@@ -1,64 +1,4 @@
-# RAG-PDF-Chat-App
-
-A Streamlit-based application that allows users to chat with PDF documents using multiple AI providers through RAG (Retrieval-Augmented Generation).
-
-## Features
-
-- Support for multiple AI providers:
-  - OpenAI
-  - Google Gemini
-  - Anthropic Claude
-  - Grok
-- PDF text extraction with multiple fallback methods
-- Intelligent text chunking with overlap
-- Semantic search using FAISS
-- Configurable chunk size and overlap
-- Chat history management
-- Export chat history functionality
-- Customizable UI settings
-
-## Setup
-
-1. Clone the repository:
-```bash
-git clone https://github.com/ArekatlaNishanthchowdary/RAG-PDF-Chat-App.git
-cd RAG-PDF-Chat-App
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Set up your environment variables (optional):
-- `EMBEDDING_MODEL`: Name of the embedding model to use
-- `CHUNK_SIZE`: Size of text chunks
-- `CHUNK_OVERLAP`: Overlap between chunks
-- `DEFAULT_PROVIDER`: Default AI provider
-- Other provider-specific settings
-
-4. Run the application:
-```bash
-streamlit run app.py
-```
-
-## Usage
-
-1. Select your preferred AI provider in the sidebar
-2. Enter your API key for the selected provider
-3. Upload a PDF document
-4. Start chatting with the document content
-
-## Configuration
-
-The application can be configured through:
-- Environment variables
-- `config.py` file
-- Streamlit sidebar settings
-
-## License
-
-MIT License with Gemini API
+# RAG PDF Chat App with Gemini API
 
 A comprehensive **Retrieval-Augmented Generation (RAG)** application that allows users to upload PDF documents and chat with their content using Google's Gemini AI. Built with Streamlit for a user-friendly web interface.
 
@@ -284,4 +224,4 @@ This project is open source. Please ensure you comply with the terms of service 
 
 ---
 
-**Built with ❤️ using Streamlit, Gemini AI, and modern RAG techniques**#
+**Built with ❤️ using Streamlit, Gemini AI, and modern RAG techniques**

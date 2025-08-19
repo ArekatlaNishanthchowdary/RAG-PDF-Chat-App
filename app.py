@@ -1,4 +1,5 @@
 import streamlit as st
+import google.generativeai as genai
 import PyPDF2
 import pdfplumber
 import faiss
@@ -11,15 +12,6 @@ from typing import List, Dict, Tuple, Optional
 import io
 import traceback
 from config import config
-from api_providers import get_provider
-from utils import (
-    clean_text,
-    validate_gemini_response,
-    prepare_chat_prompt,
-    initialize_session_state,
-    display_chat_interface
-)
-from ui_utils import configure_page, setup_sidebar, show_file_info, show_api_configuration_warning
 
 # Configure Streamlit page
 st.set_page_config(
@@ -203,53 +195,75 @@ class EmbeddingManager:
         
         return results
 
-class ChatInterface:
-    """Handle API provider interactions."""
+class GeminiChat:
+    """Handle Gemini API interactions."""
     
-    def __init__(self, provider_name: str, api_key: str, model_name: str):
-        self.provider_name = provider_name
+    def __init__(self, api_key: str):
         self.api_key = api_key
-        self.model_name = model_name
-        self.provider = get_provider(provider_name)
+        self.model = None
         self.initialize()
     
-    def initialize(self):
-        """Initialize the selected provider."""
-        if not self.provider:
-            raise ValueError(f"Invalid provider: {self.provider_name}")
-        
-        success = self.provider.initialize(self.api_key)
-        if not success:
-            raise ValueError(f"Failed to initialize {self.provider_name} with the provided API key")
+    def initialize(self, model_name="gemini-1.5-flash"):
+        """Initialize Gemini model."""
+        try:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel(model_name)
+        except Exception as e:
+            st.error(f"Failed to initialize Gemini: {str(e)}")
+            self.model = None
     
     def generate_response(self, query: str, context_chunks: List[Tuple[Dict, float]], 
                          chat_history: List[Dict]) -> str:
         """Generate response using retrieved context."""
-        if not self.provider:
-            raise ValueError("Provider not initialized")
+        if not self.model:
+            raise ValueError("Gemini model not initialized")
         
-        # Prepare the prompt with context and history
-        prompt = prepare_chat_prompt(query, context_chunks, chat_history)
+        # Build context from retrieved chunks
+        context = "\n\n".join([
+            f"Source {i+1} (Relevance: {score:.3f}):\n{chunk['text']}"
+            for i, (chunk, score) in enumerate(context_chunks)
+        ])
+        
+        # Build conversation history
+        history = ""
+        if chat_history:
+            recent_history = chat_history[-5:]  # Last 5 exchanges
+            for msg in recent_history:
+                history += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n\n"
+        
+        # Create comprehensive prompt
+        prompt = f"""You are a helpful AI assistant that answers questions based on the provided PDF document context. 
+
+CONTEXT FROM DOCUMENT:
+{context}
+
+CONVERSATION HISTORY:
+{history}
+
+CURRENT QUESTION: {query}
+
+INSTRUCTIONS:
+1. Answer the question based primarily on the provided context
+2. If the context doesn't contain sufficient information, clearly state this
+3. Be specific and cite relevant parts of the context when possible
+4. Maintain conversation continuity when appropriate
+5. If asked about previous parts of the conversation, refer to the conversation history
+
+RESPONSE:"""
         
         try:
-            response = self.provider.generate_response(prompt, self.model_name)
-            result = validate_gemini_response(response)
-            
-            if not result["success"]:
-                return f"Error: {result['error']}"
-            
-            return result["response"]
-            
+            response = self.model.generate_content(prompt)
+            return response.text
         except Exception as e:
             error_msg = str(e)
             if "API_KEY" in error_msg.upper():
-                return f"Error: Invalid {self.provider_name} API key. Please check your API key."
+                return "Error: Invalid API key. Please check your Gemini API key."
             elif "QUOTA" in error_msg.upper() or "LIMIT" in error_msg.upper():
-                return f"Error: {self.provider_name} API quota exceeded. Please try again later."
+                return "Error: API quota exceeded. Please try again later."
             else:
                 return f"Error generating response: {error_msg}"
 
-def init_session_state():
+def initialize_session_state():
     """Initialize Streamlit session state variables."""
     if 'pdf_processed' not in st.session_state:
         st.session_state.pdf_processed = False
@@ -257,50 +271,99 @@ def init_session_state():
         st.session_state.chat_history = []
     if 'embedding_manager' not in st.session_state:
         st.session_state.embedding_manager = None
-    if 'chat_interface' not in st.session_state:
-        st.session_state.chat_interface = None
+    if 'gemini_chat' not in st.session_state:
+        st.session_state.gemini_chat = None
     if 'current_pdf_name' not in st.session_state:
         st.session_state.current_pdf_name = None
     if 'api_key_configured' not in st.session_state:
         st.session_state.api_key_configured = False
-    if 'current_provider' not in st.session_state:
-        st.session_state.current_provider = config.get("default_provider")
     if 'current_model' not in st.session_state:
         st.session_state.current_model = None
 
-
+def sidebar():
+    """Create sidebar for configuration and controls."""
+    st.sidebar.title("🔧 Configuration")
+    
+    # API Key Configuration
+    st.sidebar.subheader("Gemini API Key")
+    
+    api_key = st.sidebar.text_input(
+        "Enter your Gemini API key:",
+        type="password",
+        help="Get your API key from https://makersuite.google.com/app/apikey"
+    )
+    
+    # Gemini Model Selection
+    st.sidebar.subheader("🤖 Gemini Model")
+    available_models = config.get("gemini_models")
+    default_model = config.get("default_gemini_model")
+    
+    selected_model = st.sidebar.selectbox(
+        "Choose Gemini Model:",
+        available_models,
+        index=available_models.index(default_model),
+        help="Select the Gemini model for chat responses"
+    )
+    
+    if api_key:
+        # Check if model or API key changed
+        if (not st.session_state.api_key_configured or 
+            st.session_state.gemini_chat is None or
+            getattr(st.session_state, 'current_model', None) != selected_model):
+            try:
+                st.session_state.gemini_chat = GeminiChat(api_key)
+                st.session_state.gemini_chat.initialize(selected_model)
+                if st.session_state.gemini_chat.model:
+                    st.session_state.api_key_configured = True
+                    st.session_state.current_model = selected_model
+                    st.sidebar.success(f"✅ {selected_model} configured successfully!")
+                else:
+                    st.sidebar.error("❌ Failed to configure model")
+            except Exception as e:
+                st.sidebar.error(f"❌ API Key/Model error: {str(e)}")
+    
+    # PDF Processing Options
+    st.sidebar.subheader("📄 PDF Processing")
+    chunk_size = st.sidebar.slider("Chunk Size", 500, 2000, 1000, 100)
+    overlap = st.sidebar.slider("Chunk Overlap", 50, 500, 200, 50)
+    
+    # Retrieval Options
+    st.sidebar.subheader("🔍 Retrieval Settings")
+    num_results = st.sidebar.slider("Number of chunks to retrieve", 1, 10, 5)
+    
+    # Chat Controls
+    st.sidebar.subheader("💬 Chat Controls")
+    if st.sidebar.button("Clear Chat History"):
+        st.session_state.chat_history = []
+        st.rerun()
+    
+    if st.sidebar.button("Export Chat History"):
+        if st.session_state.chat_history:
+            chat_json = json.dumps(st.session_state.chat_history, indent=2)
+            st.sidebar.download_button(
+                "Download Chat History",
+                chat_json,
+                file_name=f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
+        else:
+            st.sidebar.warning("No chat history to export")
+    
+    return chunk_size, overlap, num_results
 
 def main():
     """Main application function."""
-    # Configure the page
-    configure_page()
+    st.title("📚 RAG PDF Chat App with Gemini")
+    st.markdown("Upload a PDF document and chat with its content using Google's Gemini AI!")
     
-    st.title("📚 RAG PDF Chat App")
-    st.markdown("Upload a PDF document and chat with its content using your preferred AI model!")
+    initialize_session_state()
+    chunk_size, overlap, num_results = sidebar()
     
-    # Initialize session state
-    init_session_state()
-    
-    # Setup sidebar and get configuration
-    provider, api_key, model, chunk_size, overlap, num_results = setup_sidebar()
-    
-    # Check if API key is configured
-    if not api_key:
-        show_api_configuration_warning(provider)
+    # Check API key
+    if not st.session_state.api_key_configured:
+        st.warning("⚠️ Please configure your Gemini API key in the sidebar to continue.")
+        st.info("💡 Get your free API key from: https://makersuite.google.com/app/apikey")
         return
-        
-    # Initialize or update the chat interface if provider/model changed
-    if (st.session_state.chat_interface is None or
-        provider != st.session_state.current_provider or
-        model != st.session_state.current_model):
-        try:
-            st.session_state.chat_interface = ChatInterface(provider, api_key, model)
-            st.session_state.api_key_configured = True
-            st.session_state.current_provider = provider
-            st.session_state.current_model = model
-        except Exception as e:
-            st.error(f"Failed to initialize {provider}: {str(e)}")
-            return
     
     # Main content area
     col1, col2 = st.columns([1, 2])
@@ -324,7 +387,6 @@ def main():
                         # Extract text
                         text = PDFProcessor.extract_text(uploaded_file)
                         st.success(f"✅ Extracted {len(text)} characters")
-                        text = clean_text(text)  # Clean the extracted text
                         
                         # Chunk text
                         chunker = TextChunker(chunk_size, overlap)
@@ -352,7 +414,11 @@ def main():
                         return
             
             # Show PDF info
-            show_file_info()
+            if st.session_state.pdf_processed:
+                st.info(f"📋 Current PDF: {uploaded_file.name}")
+                if st.session_state.embedding_manager:
+                    num_chunks = len(st.session_state.embedding_manager.chunks)
+                    st.info(f"📊 Chunks: {num_chunks}")
     
     with col2:
         st.subheader("💬 Chat Interface")
@@ -361,19 +427,30 @@ def main():
             st.info("👆 Upload a PDF document to start chatting!")
             return
         
-        # Chat interface container with scrolling
-        chat_area = st.container()
-        # Reserve space for chat input at the bottom
-        input_container = st.container()
+        # Chat interface
+        chat_container = st.container()
         
         # Display chat history
-        with chat_area:
-            for exchange in st.session_state.chat_history:
-                display_chat_interface(chat_area, exchange)
+        with chat_container:
+            for i, exchange in enumerate(st.session_state.chat_history):
+                # User message
+                with st.chat_message("user"):
+                    st.write(exchange['user'])
+                
+                # Assistant message
+                with st.chat_message("assistant"):
+                    st.write(exchange['assistant'])
+                    
+                    # Show sources if available
+                    if 'sources' in exchange:
+                        with st.expander("📖 View Sources"):
+                            for j, (chunk, score) in enumerate(exchange['sources']):
+                                st.markdown(f"**Source {j+1}** (Relevance: {score:.3f})")
+                                st.text(chunk['text'][:200] + "..." if len(chunk['text']) > 200 else chunk['text'])
+                                st.markdown("---")
         
-        # Chat input at the bottom
-        with input_container:
-            user_input = st.chat_input("Ask a question about your PDF...")
+        # Chat input
+        user_input = st.chat_input("Ask a question about your PDF...")
         
         if user_input:
             # Add user message to chat
@@ -391,8 +468,8 @@ def main():
                             response = "I couldn't find relevant information in the document to answer your question."
                             sources = []
                         else:
-                            # Generate response using the configured provider
-                            response = st.session_state.chat_interface.generate_response(
+                            # Generate response using Gemini
+                            response = st.session_state.gemini_chat.generate_response(
                                 user_input, results, st.session_state.chat_history
                             )
                             sources = results
@@ -409,30 +486,24 @@ def main():
                                     st.markdown("---")
                         
                         # Add to chat history
-                        exchange = {
+                        st.session_state.chat_history.append({
                             'user': user_input,
                             'assistant': response,
                             'sources': sources,
-                            'timestamp': datetime.now().isoformat(),
-                            'provider': st.session_state.current_provider,
-                            'model': st.session_state.current_model
-                        }
-                        st.session_state.chat_history.append(exchange)
+                            'timestamp': datetime.now().isoformat()
+                        })
                         
                     except Exception as e:
                         error_response = f"❌ Error: {str(e)}"
                         st.error(error_response)
                         
                         # Add error to chat history
-                        exchange = {
+                        st.session_state.chat_history.append({
                             'user': user_input,
                             'assistant': error_response,
                             'sources': [],
-                            'timestamp': datetime.now().isoformat(),
-                            'provider': st.session_state.current_provider,
-                            'model': st.session_state.current_model
-                        }
-                        st.session_state.chat_history.append(exchange)
+                            'timestamp': datetime.now().isoformat()
+                        })
 
 if __name__ == "__main__":
     main()

@@ -200,15 +200,12 @@ def initialize_session_state() -> None:
 
 def display_chat_interface(chat_container: Any, exchange: Dict[str, Any]) -> None:
     """Display a single chat exchange in the interface."""
-    # Create a message container for this exchange
-    msg_container = chat_container.container()
-    
     # User message
-    with msg_container.chat_message("user"):
+    with chat_container.chat_message("user"):
         st.write(exchange['user'])
     
     # Assistant message
-    with msg_container.chat_message("assistant"):
+    with chat_container.chat_message("assistant"):
         st.write(exchange['assistant'])
         
         # Show sources if available
@@ -218,6 +215,3 @@ def display_chat_interface(chat_container: Any, exchange: Dict[str, Any]) -> Non
                     st.markdown(f"**Source {j+1}** (Relevance: {score:.3f})")
                     st.text(truncate_text(chunk['text'], 200))
                     st.markdown("---")
-    
-    # Add some spacing between messages
-    msg_container.markdown("<br>", unsafe_allow_html=True)

@@ -5,22 +5,8 @@ from typing import Dict, Any
 
 # Default configuration
 DEFAULT_CONFIG = {
-    # API Providers
-    "available_providers": [
-        "OpenAI",
-        "Google Gemini",
-        "Anthropic Claude",
-        "Grok"
-    ],
-    "default_provider": "Google Gemini",
-    
-    # Provider-specific Models
-    "openai_models": [
-        "gpt-4-turbo",
-        "gpt-4",
-        "gpt-3.5-turbo",
-        "gpt-3.5-turbo-16k"
-    ],
+    # Model Settings
+    "embedding_model": "all-MiniLM-L6-v2",
     "gemini_models": [
         "gemini-1.5-flash",
         "gemini-1.5-pro",
@@ -28,25 +14,7 @@ DEFAULT_CONFIG = {
         "gemini-2.5-flash",
         "gemini-2.5-pro"
     ],
-    "claude_models": [
-        "claude-3-opus",
-        "claude-3-sonnet",
-        "claude-2.1",
-        "claude-instant"
-    ],
-    "grok_models": [
-        "grok-1",
-        "grok-0.5"
-    ],
-    
-    # Default Models for each provider
-    "default_openai_model": "gpt-3.5-turbo",
-    "default_gemini_model": "gemini-1.5-pro",
-    "default_claude_model": "claude-3-sonnet",
-    "default_grok_model": "grok-1",
-    
-    # Embedding Model
-    "embedding_model": "all-MiniLM-L6-v2",
+    "default_gemini_model": "gemini-1.5-flash",
     
     # Text Processing
     "chunk_size": 1000,
@@ -93,7 +61,7 @@ class AppConfig:
             "CHUNK_SIZE": "chunk_size",
             "CHUNK_OVERLAP": "chunk_overlap",
             "MAX_CHUNKS_RETRIEVE": "max_chunks_retrieve",
-            "DEFAULT_PROVIDER": "default_provider",
+            "GEMINI_MODEL": "default_gemini_model",
             "MAX_CHAT_HISTORY": "max_chat_history",
             "MAX_FILE_SIZE": "max_file_size_mb",
             "PAGE_TITLE": "page_title",
@@ -164,36 +132,6 @@ class AppConfig:
     def validate_file_type(self, file_extension: str) -> bool:
         """Validate file type against supported types."""
         return file_extension.lower().lstrip('.') in self.get("supported_file_types")
-    
-    def get_available_providers(self) -> list:
-        """Get list of available AI providers."""
-        return self.get("available_providers", [])
-    
-    def get_provider_models(self, provider: str) -> list:
-        """Get available models for a specific provider."""
-        provider = provider.lower()
-        if "gemini" in provider:
-            return self.get("gemini_models", [])
-        elif "openai" in provider:
-            return self.get("openai_models", [])
-        elif "claude" in provider:
-            return self.get("claude_models", [])
-        elif "grok" in provider:
-            return self.get("grok_models", [])
-        return []
-    
-    def get_default_model(self, provider: str) -> str:
-        """Get default model for a specific provider."""
-        provider = provider.lower()
-        if "gemini" in provider:
-            return self.get("default_gemini_model")
-        elif "openai" in provider:
-            return self.get("default_openai_model")
-        elif "claude" in provider:
-            return self.get("default_claude_model")
-        elif "grok" in provider:
-            return self.get("default_grok_model")
-        return None
 
 # Global configuration instance
 config = AppConfig()
